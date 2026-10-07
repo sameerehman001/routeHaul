@@ -253,3 +253,29 @@ export async function logoutUser(refreshToken: string) {
     },
   });
 }
+
+
+export async function getCurrentUser(userId: number) {
+  const user = await prisma.user.findUnique({
+    where: {
+      id: userId,
+    },
+    select: {
+      id: true,
+      name: true,
+      email: true,
+      phone: true,
+      role: true,
+      status: true,
+      isEmailVerified: true,
+      createdAt: true,
+      updatedAt: true,
+    },
+  });
+
+  if (!user) {
+    throw new Error("User not found");
+  }
+
+  return user;
+}

@@ -6,11 +6,13 @@ import {
 } from "./auth.validation.js";
 
 import {
+    getCurrentUser,
   loginUser,
   logoutUser,
   refreshAccessToken,
   registerUser,
 } from "./auth.service.js";
+import type { AuthenticatedRequest } from "../../middleware/auth.middleware.js";
 
 export async function register(
   req: Request,
@@ -147,6 +149,39 @@ export async function logout(
         error instanceof Error
           ? error.message
           : "Logout failed",
+    });
+  }
+}
+
+
+export async function me(
+  req: AuthenticatedRequest,
+  res: Response
+) {
+  try {
+    if (!req.user) {
+      return res.status(401).json({
+        success: false,
+        message: "Authentication required",
+      });
+    }
+
+    const user = await getCurrentUser(req.user.userId);
+
+    return res.status(200).json({
+      success: true,
+      message: "Current user fetched successfully",
+      data: user,
+    });
+  } catch (error) {
+    console.error("Get current user error:", error);
+
+    return res.status(404).json({
+      success: false,
+      message:
+        error instanceof Error
+          ? error.message
+          : "User not found",
     });
   }
 }
