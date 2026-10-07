@@ -7,6 +7,8 @@ import {
 
 import {
   loginUser,
+  logoutUser,
+  refreshAccessToken,
   registerUser,
 } from "./auth.service.js";
 
@@ -63,6 +65,88 @@ export async function login(
         error instanceof Error
           ? error.message
           : "Login failed",
+    });
+  }
+}
+
+
+export async function refresh(
+  req: Request,
+  res: Response
+) {
+  try {
+    const { refreshToken } = req.body;
+
+    if (!refreshToken) {
+      return res.status(400).json({
+        success: false,
+        message: "Refresh token is required",
+      });
+    }
+
+    if (typeof refreshToken !== "string") {
+      return res.status(400).json({
+        success: false,
+        message: "Refresh token must be a string",
+      });
+    }
+
+    const result = await refreshAccessToken(refreshToken);
+
+    return res.status(200).json({
+      success: true,
+      message: "Token refreshed successfully",
+      data: result,
+    });
+  } catch (error) {
+    console.error("Refresh token error:", error);
+
+    return res.status(401).json({
+      success: false,
+      message:
+        error instanceof Error
+          ? error.message
+          : "Unable to refresh token",
+    });
+  }
+}
+
+export async function logout(
+  req: Request,
+  res: Response
+) {
+  try {
+    const { refreshToken } = req.body;
+
+    if (!refreshToken) {
+      return res.status(400).json({
+        success: false,
+        message: "Refresh token is required",
+      });
+    }
+
+    if (typeof refreshToken !== "string") {
+      return res.status(400).json({
+        success: false,
+        message: "Refresh token must be a string",
+      });
+    }
+
+    await logoutUser(refreshToken);
+
+    return res.status(200).json({
+      success: true,
+      message: "Logout successful",
+    });
+  } catch (error) {
+    console.error("Logout error:", error);
+
+    return res.status(400).json({
+      success: false,
+      message:
+        error instanceof Error
+          ? error.message
+          : "Logout failed",
     });
   }
 }
