@@ -53,6 +53,8 @@ export async function registerUser(data: RegisterInput) {
   return user;
 }
 
+
+
 export async function loginUser(data: LoginInput) {
   const user = await prisma.user.findUnique({
     where: {
@@ -81,11 +83,13 @@ export async function loginUser(data: LoginInput) {
     throw new Error("Your account has been rejected");
   }
 
+  // Generate one unique ID for this login session.
   const sessionId = crypto.randomUUID();
 
   const accessToken = generateAccessToken({
     userId: user.id,
     role: user.role,
+    sessionId,
   });
 
   const refreshToken = generateRefreshToken({
@@ -94,19 +98,22 @@ export async function loginUser(data: LoginInput) {
   });
 
   const tokenHash = hashRefreshToken(refreshToken);
-
   const refreshTokenPayload = verifyRefreshToken(refreshToken);
 
   if (!refreshTokenPayload.exp) {
     throw new Error("Refresh token expiration is missing");
   }
 
-  const expiresAt = new Date(refreshTokenPayload.exp * 1000);
+  const expiresAt = new Date(
+    refreshTokenPayload.exp * 1000
+  );
 
+  // IMPORTANT: Save the same sessionId used in both tokens.
   await prisma.refreshToken.create({
     data: {
       userId: user.id,
       tokenHash,
+      sessionId,
       expiresAt,
     },
   });
@@ -127,6 +134,9 @@ export async function loginUser(data: LoginInput) {
 }
 
 
+
+
+
 export async function refreshAccessToken(
   refreshToken: string
 ) {
@@ -138,7 +148,7 @@ export async function refreshAccessToken(
     throw new Error("Invalid or expired refresh token");
   }
 
-  if (!payload.exp) {
+  if (!payload.exp || !payload.sessionId) {
     throw new Error("Invalid refresh token");
   }
 
@@ -165,6 +175,19 @@ export async function refreshAccessToken(
     throw new Error("Refresh token has expired");
   }
 
+  // Legacy tokens without a session ID must log in again.
+  if (!storedToken.sessionId) {
+    throw new Error("Session is invalid. Please log in again");
+  }
+
+  // Ensure the signed token and database record match.
+  if (
+    payload.sessionId !== storedToken.sessionId ||
+    payload.userId !== storedToken.userId
+  ) {
+    throw new Error("Refresh token session mismatch");
+  }
+
   const user = storedToken.user;
 
   if (user.deletedAt) {
@@ -175,16 +198,19 @@ export async function refreshAccessToken(
     throw new Error("Your account has been rejected");
   }
 
-  const newSessionId = crypto.randomUUID();
+  // IMPORTANT: Keep the existing session ID.
+  // Do not generate a new session ID during token refresh.
+  const sessionId = storedToken.sessionId;
 
   const newAccessToken = generateAccessToken({
     userId: user.id,
     role: user.role,
+    sessionId,
   });
 
   const newRefreshToken = generateRefreshToken({
     userId: user.id,
-    sessionId: newSessionId,
+    sessionId,
   });
 
   const newRefreshTokenHash = hashRefreshToken(
@@ -202,6 +228,7 @@ export async function refreshAccessToken(
     newRefreshTokenPayload.exp * 1000
   );
 
+  // Rotate the refresh token while preserving its session.
   await prisma.$transaction([
     prisma.refreshToken.update({
       where: {
@@ -216,6 +243,7 @@ export async function refreshAccessToken(
       data: {
         userId: user.id,
         tokenHash: newRefreshTokenHash,
+        sessionId,
         expiresAt: newExpiresAt,
       },
     }),
@@ -227,12 +255,32 @@ export async function refreshAccessToken(
   };
 }
 
+
+
 export async function logoutUser(refreshToken: string) {
+  let payload;
+
+  try {
+    payload = verifyRefreshToken(refreshToken);
+  } catch {
+    throw new Error("Invalid or expired refresh token");
+  }
+
+  if (!payload.sessionId) {
+    throw new Error("Invalid refresh token session");
+  }
+
   const tokenHash = hashRefreshToken(refreshToken);
 
   const storedToken = await prisma.refreshToken.findUnique({
     where: {
       tokenHash,
+    },
+    select: {
+      id: true,
+      userId: true,
+      sessionId: true,
+      revokedAt: true,
     },
   });
 
@@ -240,19 +288,29 @@ export async function logoutUser(refreshToken: string) {
     throw new Error("Refresh token not found");
   }
 
+  if (
+    storedToken.userId !== payload.userId ||
+    storedToken.sessionId !== payload.sessionId
+  ) {
+    throw new Error("Refresh token session mismatch");
+  }
+
   if (storedToken.revokedAt) {
     return;
   }
 
-  await prisma.refreshToken.update({
+  await prisma.refreshToken.updateMany({
     where: {
-      id: storedToken.id,
+      userId: storedToken.userId,
+      sessionId: storedToken.sessionId,
+      revokedAt: null,
     },
     data: {
       revokedAt: new Date(),
     },
   });
 }
+
 
 
 export async function getCurrentUser(userId: number) {

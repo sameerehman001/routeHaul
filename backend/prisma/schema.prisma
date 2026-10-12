@@ -726,19 +726,17 @@ model AuditLog {
 // ============================================================
 
 model RefreshToken {
-  id Int @id @default(autoincrement())
-
-  userId Int
-  user   User @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  tokenHash String @unique
-
+  id        Int       @id @default(autoincrement())
+  userId    Int
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash String    @unique
+  sessionId String?
   expiresAt DateTime
   revokedAt DateTime?
-
-  createdAt DateTime @default(now())
+  createdAt DateTime  @default(now())
 
   @@index([userId])
+  @@index([sessionId])
   @@index([expiresAt])
 }
 

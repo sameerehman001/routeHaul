@@ -7,6 +7,7 @@ export type AuthUserRole =
 export interface AccessTokenPayload {
   userId: number;
   role: AuthUserRole;
+  sessionId: string;
 }
 
 export interface RefreshTokenPayload {
