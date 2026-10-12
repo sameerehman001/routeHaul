@@ -5,8 +5,10 @@ import type { AuthenticatedRequest } from "../../middleware/auth.middleware.js";
 
 import {
   approveUser,
+  createAdmin,
   getPendingUsers,
   getUserForReview,
+  listAdmins,
   listUsers,
   rejectUser,
 } from "./admin.service.js";
@@ -284,6 +286,159 @@ export async function listUsersController(
     return res.status(500).json({
       success: false,
       message: "Failed to fetch users",
+    });
+  }
+}
+
+
+export async function createAdminController(
+  req: Request,
+  res: Response
+) {
+  const body = req.body as {
+    name?: unknown;
+    email?: unknown;
+    password?: unknown;
+  } | undefined;
+
+  const name =
+    typeof body?.name === "string" ? body.name.trim() : "";
+
+  const email =
+    typeof body?.email === "string"
+      ? body.email.trim().toLowerCase()
+      : "";
+
+  const password = body?.password;
+
+  if (!name || name.length > 100) {
+    return res.status(400).json({
+      success: false,
+      message: "Name must be between 1 and 100 characters",
+    });
+  }
+
+  if (
+    !email ||
+    email.length > 254 ||
+    !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
+  ) {
+    return res.status(400).json({
+      success: false,
+      message: "A valid email address is required",
+    });
+  }
+
+  if (
+    typeof password !== "string" ||
+    password.length < 12 ||
+    password.length > 128
+  ) {
+    return res.status(400).json({
+      success: false,
+      message: "Password must be between 12 and 128 characters",
+    });
+  }
+
+  try {
+    const admin = await createAdmin({
+      name,
+      email,
+      password,
+    });
+
+    return res.status(201).json({
+      success: true,
+      message: "Admin account created successfully",
+      data: admin,
+    });
+  } catch (error) {
+    const message = getErrorMessage(error);
+
+    if (message.includes("already exists")) {
+      return res.status(409).json({
+        success: false,
+        message,
+      });
+    }
+
+    if (
+      message.includes("Name must") ||
+      message.includes("Password must")
+    ) {
+      return res.status(400).json({
+        success: false,
+        message,
+      });
+    }
+
+    console.error("Create admin error:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: "Failed to create admin account",
+    });
+  }
+}
+
+
+export async function listAdminsController(
+  req: Request,
+  res: Response
+) {
+  try {
+    const pageValue = req.query.page;
+    const limitValue = req.query.limit;
+    const searchValue = req.query.search;
+
+    const page =
+      typeof pageValue === "string" ? Number(pageValue) : 1;
+
+    const limit =
+      typeof limitValue === "string" ? Number(limitValue) : 10;
+
+    const search =
+      typeof searchValue === "string" ? searchValue.trim() : "";
+
+    if (!Number.isInteger(page) || page < 1) {
+      return res.status(400).json({
+        success: false,
+        message: "Page must be a positive integer",
+      });
+    }
+
+    if (!Number.isInteger(limit) || limit < 1 || limit > 100) {
+      return res.status(400).json({
+        success: false,
+        message: "Limit must be between 1 and 100",
+      });
+    }
+
+    if (search.length > 100) {
+      return res.status(400).json({
+        success: false,
+        message: "Search cannot exceed 100 characters",
+      });
+    }
+
+    const result = await listAdmins({
+      page,
+      limit,
+      search,
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: "Admin accounts retrieved successfully",
+      data: result.admins,
+      pagination: result.pagination,
+    });
+  } catch (error) {
+    console.error("List admins error:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: "Failed to retrieve admin accounts",
     });
   }
 }

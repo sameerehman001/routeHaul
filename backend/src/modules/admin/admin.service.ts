@@ -2,6 +2,7 @@
 import type { AuthUserRole } from "../auth/auth.types.js";
 import type { Prisma } from "../../generated/prisma/client.js";
 import prisma from "../../config/page.js";
+import bcrypt from "bcryptjs";
 
 type Reviewer = {
   userId: number;
@@ -276,3 +277,133 @@ export async function listUsers(filters: ListUsersFilters) {
 }
 
 
+
+export interface CreateAdminInput {
+  name: string;
+  email: string;
+  password: string;
+}
+
+export async function createAdmin(data: CreateAdminInput) {
+  const name = data.name.trim();
+  const email = data.email.trim().toLowerCase();
+
+  if (!name || name.length > 100) {
+    throw new Error("Name must be between 1 and 100 characters");
+  }
+
+  if (data.password.length < 12 || data.password.length > 128) {
+    throw new Error("Password must be between 12 and 128 characters");
+  }
+
+  const existingUser = await prisma.user.findUnique({
+    where: { email },
+    select: { id: true },
+  });
+
+  if (existingUser) {
+    throw new Error("An account with this email already exists");
+  }
+
+  const hashedPassword = await bcrypt.hash(data.password, 12);
+
+  try {
+    return await prisma.user.create({
+      data: {
+        name,
+        email,
+        password: hashedPassword,
+        role: "ADMIN",
+        status: "ACTIVE",
+        isEmailVerified: false,
+      },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        role: true,
+        status: true,
+        isEmailVerified: true,
+        createdAt: true,
+      },
+    });
+  } catch (error) {
+    // Handle a duplicate email if two requests race each other.
+    if (
+      typeof error === "object" &&
+      error !== null &&
+      "code" in error &&
+      error.code === "P2002"
+    ) {
+      throw new Error("An account with this email already exists");
+    }
+
+    throw error;
+  }
+}
+
+
+export interface ListAdminsFilters {
+  page: number;
+  limit: number;
+  search?: string;
+}
+
+export async function listAdmins(filters: ListAdminsFilters) {
+  const { page, limit, search } = filters;
+  const skip = (page - 1) * limit;
+
+const where: Prisma.UserWhereInput = {
+  role: "ADMIN",
+  deletedAt: null,
+  ...(search
+    ? {
+        OR: [
+          {
+            name: {
+              contains: search,
+              mode: "insensitive",
+            },
+          },
+          {
+            email: {
+              contains: search,
+              mode: "insensitive",
+            },
+          },
+        ],
+      }
+    : {}),
+};
+
+  const [admins, total] = await prisma.$transaction([
+    prisma.user.findMany({
+      where,
+      skip,
+      take: limit,
+      orderBy: { createdAt: "desc" },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        phone: true,
+        role: true,
+        status: true,
+        isEmailVerified: true,
+        createdAt: true,
+        updatedAt: true,
+      },
+    }),
+    prisma.user.count({ where }),
+  ]);
+
+  return {
+    admins,
+    pagination: {
+      page,
+      limit,
+      total,
+      totalPages: Math.ceil(total / limit),
+    },
+  };
+}

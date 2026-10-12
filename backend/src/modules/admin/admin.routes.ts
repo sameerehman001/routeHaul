@@ -6,7 +6,9 @@ import { requireRole } from "../../middleware/role.middleware.js";
 
 import {
   approveUserAccount,
+  createAdminController,
   getUserDetails,
+  listAdminsController,  
   listPendingUsers,
   listUsersController,
   rejectUserAccount,
@@ -16,14 +18,29 @@ import {
 
 const router = Router();
 
+// Only SUPER_ADMIN can create admin accounts.
+router.post(
+  "/admins",
+  authenticate,
+  requireRole("SUPER_ADMIN"),
+  createAdminController
+);
+router.get(
+  "/admins",
+  authenticate,
+  requireRole("SUPER_ADMIN"),
+  listAdminsController
+);
+
+// Existing routes: ADMIN and SUPER_ADMIN.
 router.use(authenticate);
 router.use(requireRole("ADMIN", "SUPER_ADMIN"));
 
-router.get("/users", listUsersController);
+// Keep your existing routes below this point.
 router.get("/users/pending", listPendingUsers);
 router.get("/users/:userId", getUserDetails);
-
 router.patch("/users/:userId/approve", approveUserAccount);
 router.patch("/users/:userId/reject", rejectUserAccount);
+router.get("/users", listUsersController);
 
 export default router;
