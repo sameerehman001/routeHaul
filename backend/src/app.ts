@@ -4,6 +4,7 @@ import authRoutes from "./modules/auth/auth.routes.js";
 import { authenticate } from "./middleware/auth.middleware.js";
 import { requireRole } from "./middleware/role.middleware.js";
 import adminRoutes from "./modules/admin/admin.routes.js";
+import vehicleRoutes from "./modules/vehicle/vehicle.routes.js";
 
 const app = express();
 
@@ -32,5 +33,6 @@ app.get(
 
 app.use("/api/auth", authRoutes);
 app.use("/api/admin", adminRoutes);
+app.use("/api/vehicles", vehicleRoutes);
 
 export default app;
