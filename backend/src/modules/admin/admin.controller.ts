@@ -6,11 +6,14 @@ import type { AuthenticatedRequest } from "../../middleware/auth.middleware.js";
 import {
   approveUser,
   createAdmin,
+  getAdminById,
   getPendingUsers,
   getUserForReview,
   listAdmins,
   listUsers,
   rejectUser,
+  updateAdmin,
+  updateAdminStatus,
 } from "./admin.service.js";
 
 
@@ -439,6 +442,275 @@ export async function listAdminsController(
     return res.status(500).json({
       success: false,
       message: "Failed to retrieve admin accounts",
+    });
+  }
+}
+
+export async function getAdminDetailsController(
+  req: Request,
+  res: Response
+) {
+  const adminId = parseUserId(req.params.adminId);
+
+  if (adminId === null) {
+    return res.status(400).json({
+      success: false,
+      message: "Invalid admin ID",
+    });
+  }
+
+  try {
+    const admin = await getAdminById(adminId);
+
+    if (!admin) {
+      return res.status(404).json({
+        success: false,
+        message: "Admin account not found",
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: "Admin account retrieved successfully",
+      data: admin,
+    });
+  } catch (error) {
+    console.error("Get admin details error:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: "Failed to retrieve admin account",
+    });
+  }
+}
+
+export async function updateAdminController(
+  req: Request,
+  res: Response
+) {
+  const adminId = parseUserId(req.params.adminId);
+
+  if (adminId === null) {
+    return res.status(400).json({
+      success: false,
+      message: "Invalid admin ID",
+    });
+  }
+
+  const body: unknown = req.body;
+
+  if (
+    typeof body !== "object" ||
+    body === null ||
+    Array.isArray(body)
+  ) {
+    return res.status(400).json({
+      success: false,
+      message: "Request body must be a JSON object",
+    });
+  }
+
+  const input = body as Record<string, unknown>;
+  const allowedFields = ["name", "email", "phone"];
+  const unsupportedFields = Object.keys(input).filter(
+    (key) => !allowedFields.includes(key)
+  );
+
+  if (unsupportedFields.length > 0) {
+    return res.status(400).json({
+      success: false,
+      message: `Unsupported fields: ${unsupportedFields.join(", ")}`,
+    });
+  }
+
+  const data: {
+    name?: string;
+    email?: string;
+    phone?: string | null;
+  } = {};
+
+  if (Object.keys(input).length === 0) {
+    return res.status(400).json({
+      success: false,
+      message: "Provide at least one field to update",
+    });
+  }
+
+  if ("name" in input) {
+    if (typeof input.name !== "string") {
+      return res.status(400).json({
+        success: false,
+        message: "Name must be a string",
+      });
+    }
+
+    const name = input.name.trim();
+
+    if (!name || name.length > 100) {
+      return res.status(400).json({
+        success: false,
+        message: "Name must be between 1 and 100 characters",
+      });
+    }
+
+    data.name = name;
+  }
+
+  if ("email" in input) {
+    if (typeof input.email !== "string") {
+      return res.status(400).json({
+        success: false,
+        message: "Email must be a string",
+      });
+    }
+
+    const email = input.email.trim().toLowerCase();
+
+    if (
+      email.length > 254 ||
+      !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: "A valid email address is required",
+      });
+    }
+
+    data.email = email;
+  }
+
+  if ("phone" in input) {
+    if (input.phone === null) {
+      data.phone = null;
+    } else if (typeof input.phone === "string") {
+      const phone = input.phone.trim();
+
+      if (phone.length > 30) {
+        return res.status(400).json({
+          success: false,
+          message: "Phone cannot exceed 30 characters",
+        });
+      }
+
+      data.phone = phone || null;
+    } else {
+      return res.status(400).json({
+        success: false,
+        message: "Phone must be a string or null",
+      });
+    }
+  }
+
+  try {
+    const admin = await updateAdmin(adminId, data);
+
+    if (!admin) {
+      return res.status(404).json({
+        success: false,
+        message: "Admin account not found",
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: "Admin account updated successfully",
+      data: admin,
+    });
+  } catch (error) {
+    if (
+      error instanceof Error &&
+      error.message === "An account with this email already exists"
+    ) {
+      return res.status(409).json({
+        success: false,
+        message: error.message,
+      });
+    }
+
+    console.error("Update admin error:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: "Failed to update admin account",
+    });
+  }
+}
+
+export async function updateAdminStatusController(
+  req: Request,
+  res: Response
+) {
+  const adminId = parseUserId(req.params.adminId);
+
+  if (adminId === null) {
+    return res.status(400).json({
+      success: false,
+      message: "Invalid admin ID",
+    });
+  }
+
+  const body: unknown = req.body;
+
+  if (
+    typeof body !== "object" ||
+    body === null ||
+    Array.isArray(body)
+  ) {
+    return res.status(400).json({
+      success: false,
+      message: "Request body must be a JSON object",
+    });
+  }
+
+  const input = body as Record<string, unknown>;
+
+  if (
+    Object.keys(input).length !== 1 ||
+    !("status" in input)
+  ) {
+    return res.status(400).json({
+      success: false,
+      message: 'Provide only a "status" field',
+    });
+  }
+
+  if (
+    input.status !== "ACTIVE" &&
+    input.status !== "DEACTIVATED"
+  ) {
+    return res.status(400).json({
+      success: false,
+      message: 'Status must be "ACTIVE" or "DEACTIVATED"',
+    });
+  }
+
+  try {
+    const admin = await updateAdminStatus(
+      adminId,
+      input.status
+    );
+
+    if (!admin) {
+      return res.status(404).json({
+        success: false,
+        message: "Admin account not found",
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message:
+        admin.status === "DEACTIVATED"
+          ? "Admin account deactivated successfully"
+          : "Admin account activated successfully",
+      data: admin,
+    });
+  } catch (error) {
+    console.error("Update admin status error:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: "Failed to update admin status",
     });
   }
 }

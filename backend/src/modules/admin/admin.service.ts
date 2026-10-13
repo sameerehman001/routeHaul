@@ -407,3 +407,132 @@ const where: Prisma.UserWhereInput = {
     },
   };
 }
+
+const adminDetailsSelect = {
+  id: true,
+  name: true,
+  email: true,
+  phone: true,
+  role: true,
+  status: true,
+  isEmailVerified: true,
+  createdAt: true,
+  updatedAt: true,
+} satisfies Prisma.UserSelect;
+
+export async function getAdminById(adminId: number) {
+  return prisma.user.findFirst({
+    where: {
+      id: adminId,
+      role: "ADMIN",
+      deletedAt: null,
+    },
+    select: adminDetailsSelect,
+  });
+}
+
+export interface UpdateAdminInput {
+  name?: string;
+  email?: string;
+  phone?: string | null;
+}
+
+export async function updateAdmin(
+  adminId: number,
+  input: UpdateAdminInput
+) {
+  const data: Prisma.UserUpdateManyMutationInput = {};
+
+  if (input.name !== undefined) {
+    data.name = input.name;
+  }
+
+  if (input.email !== undefined) {
+    data.email = input.email;
+  }
+
+  if (input.phone !== undefined) {
+    data.phone = input.phone;
+  }
+
+  try {
+    const result = await prisma.user.updateMany({
+      where: {
+        id: adminId,
+        role: "ADMIN",
+        deletedAt: null,
+      },
+      data,
+    });
+
+    if (result.count === 0) {
+      return null;
+    }
+
+    return await prisma.user.findFirst({
+      where: {
+        id: adminId,
+        role: "ADMIN",
+        deletedAt: null,
+      },
+      select: adminDetailsSelect,
+    });
+  } catch (error) {
+    if (
+      typeof error === "object" &&
+      error !== null &&
+      "code" in error &&
+      error.code === "P2002"
+    ) {
+      throw new Error("An account with this email already exists");
+    }
+
+    throw error;
+  }
+}
+
+export type AdminAccountStatus = "ACTIVE" | "DEACTIVATED";
+
+export async function updateAdminStatus(
+  adminId: number,
+  status: AdminAccountStatus
+) {
+  return prisma.$transaction(async (tx) => {
+    const result = await tx.user.updateMany({
+      where: {
+        id: adminId,
+        role: "ADMIN",
+        deletedAt: null,
+      },
+      data: {
+        status,
+      },
+    });
+
+    if (result.count === 0) {
+      return null;
+    }
+
+    // Revoke every active refresh-token session when deactivating.
+    if (status === "DEACTIVATED") {
+      await tx.refreshToken.updateMany({
+        where: {
+          userId: adminId,
+          revokedAt: null,
+        },
+        data: {
+          revokedAt: new Date(),
+        },
+      });
+    }
+
+    return tx.user.findFirst({
+      where: {
+        id: adminId,
+        role: "ADMIN",
+        deletedAt: null,
+      },
+      select: adminDetailsSelect,
+    });
+  });
+}

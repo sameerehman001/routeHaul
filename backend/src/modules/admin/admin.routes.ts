@@ -7,11 +7,14 @@ import { requireRole } from "../../middleware/role.middleware.js";
 import {
   approveUserAccount,
   createAdminController,
+  getAdminDetailsController,
   getUserDetails,
   listAdminsController,  
   listPendingUsers,
   listUsersController,
   rejectUserAccount,
+  updateAdminController,
+  updateAdminStatusController,
 } from "./admin.controller.js";
 
 
@@ -30,6 +33,27 @@ router.get(
   authenticate,
   requireRole("SUPER_ADMIN"),
   listAdminsController
+);
+
+router.get(
+  "/admins/:adminId",
+  authenticate,
+  requireRole("SUPER_ADMIN"),
+  getAdminDetailsController
+);
+
+router.patch(
+  "/admins/:adminId",
+  authenticate,
+  requireRole("SUPER_ADMIN"),
+  updateAdminController
+);
+
+router.patch(
+  "/admins/:adminId/status",
+  authenticate,
+  requireRole("SUPER_ADMIN"),
+  updateAdminStatusController
 );
 
 // Existing routes: ADMIN and SUPER_ADMIN.
